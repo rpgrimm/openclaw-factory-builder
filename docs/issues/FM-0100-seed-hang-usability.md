@@ -73,8 +73,8 @@ FACTORY_IDEA='...' \
 openclaw gateway restart   # after configure_delegation.sh
 
 # Interactive session when you want it
-cd ~/.openclaw/workspaces/my-project/factory
-openclaw tui --session agent:my-project-factory:main
+cd ~/.openclaw/workspaces/my-project/foreman
+openclaw tui --session agent:my-project-foreman:main
 ```
 
 Or seed + TUI intentionally:

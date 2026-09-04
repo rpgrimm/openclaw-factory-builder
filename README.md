@@ -1,4 +1,4 @@
-# openclaw-factory-maker
+# openclaw-factory-builder
 
 Create and run **OpenClaw software factories**: multi-agent project teams.
 
@@ -28,7 +28,7 @@ Skeleton roles (v0):
 On a host with OpenClaw installed and the Gateway running:
 
 ```bash
-cd /path/to/openclaw-factory-maker   # or your checkout of this repo
+cd /path/to/openclaw-factory-builder
 
 export FACTORY_PROJECT=my-project
 export FACTORY_GITHUB=owner/my-project          # optional but recommended
@@ -87,6 +87,8 @@ into `GH_TOKEN`. They never print or commit the token. Prefer `chmod 600` on tha
 
 ## Scripts
 
+Canonical copies live under `scripts/`. Root `*.sh` files are thin wrappers so quick-start commands work from the repo root.
+
 | Script | Purpose |
 |--------|---------|
 | `run-factory-setup.sh` | Orchestrates full setup pipeline |
@@ -98,7 +100,7 @@ into `GH_TOKEN`. They never print or commit the token. Prefer `chmod 600` on tha
 | `pause-all-factories.sh` | Emergency stand-down message to every project foreman (legacy `*-factory` too) |
 | `migrate-coordinator-to-foreman.sh` | Rename an existing project's `*-factory` coordinator → `*-foreman` |
 
-Source of the original pack on this host: `~/.openclaw/.factory-start-code/` (imported and commented here).
+Imported from the host pack `~/.openclaw/.factory-start-code/` (2026-09-04). Canonical copy is this GitHub repository going forward.
 
 ---
 
@@ -156,6 +158,7 @@ Product code still lives in **your product git repo** (often attached via `FACTO
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — inventory of what existed on first planning day
 - [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) — draft product plan
 - [`docs/BACKLOG.md`](docs/BACKLOG.md) — prioritized backlog
+- [`docs/STATUS.md`](docs/STATUS.md) — short status snapshot
 - [`docs/issues/FM-0100-seed-hang-usability.md`](docs/issues/FM-0100-seed-hang-usability.md) — seed/TUI hang
 - [`docs/issues/FM-0101-rename-factory-to-foreman.md`](docs/issues/FM-0101-rename-factory-to-foreman.md) — coordinator rename
 
@@ -163,4 +166,4 @@ Product code still lives in **your product git repo** (often attached via `FACTO
 
 ## Status
 
-Early. Scripts are real and used; richer factory templates (`.factory/` contracts, triage role, upgrade tooling) are on the backlog. We improve this maker the same way it will improve other factories: small slices, explicit approval to publish.
+Early. Scripts are real and used on the OpenClaw host; this repo is the versioned home. Richer factory templates (`.factory/` contracts, triage role, upgrade tooling) are on the backlog. We improve this maker the same way it will improve other factories: small slices, explicit approval to publish.
