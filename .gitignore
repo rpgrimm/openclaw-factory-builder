@@ -1,0 +1,17 @@
+# Local / host noise
+.DS_Store
+*.swp
+*~
+.env
+.env.*
+!.env.example
+
+# Secrets — never commit
+**/github_token
+**/*token*
+**/*.pem
+**/*secret*
+
+# Editor / OS
+.idea/
+.vscode/
