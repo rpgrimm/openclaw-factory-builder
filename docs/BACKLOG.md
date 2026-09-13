@@ -72,6 +72,7 @@
 | B-061 | `pause-all-factories.sh` verify on mixed legacy/modern | | Not started |
 | B-062 | Status command: list factories, coordinator id, seed marker | Nice-to-have | Not started |
 | B-063 | Gateway restart reminder automation? | Print-only vs prompt | Careful |
+| B-064 | `delete-factory.sh` — move workspace aside + scrub openclaw.json agents | FM-0102; do not rm tree | Done (PR) |
 
 ## P3 — Later
 

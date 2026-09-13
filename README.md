@@ -99,6 +99,7 @@ Canonical copies live under `scripts/`. Root `*.sh` files are thin wrappers so q
 | `start-factory.sh` | Bind GitHub into `TOOLS.md`, seed foreman once, optional TUI |
 | `pause-all-factories.sh` | Emergency stand-down message to every project foreman (legacy `*-factory` too) |
 | `migrate-coordinator-to-foreman.sh` | Rename an existing project's `*-factory` coordinator → `*-foreman` |
+| `delete-factory.sh` | Retire a factory: move workspace aside, remove agents from `openclaw.json`, leave dirs for manual `rm` |
 
 Imported from the host pack `~/.openclaw/.factory-start-code/` (2026-09-04). Canonical copy is this GitHub repository going forward.
 
@@ -153,6 +154,40 @@ Product code still lives in **your product git repo** (often attached via `FACTO
 
 ---
 
+## Delete / retire a factory
+
+Renaming `~/.openclaw/workspaces/<project>` is **not** enough. Agent ids stay in `openclaw.json` (`agents.list`), under `~/.openclaw/agents/`, and often in other agents' `subagents.allowAgents`.
+
+Also: plain `openclaw agents delete` will try to **trash the workspace**. For a factory teardown we want the opposite default — keep the tree, scrub config.
+
+```bash
+# Preview
+FACTORY_PROJECT=my-project FACTORY_DELETE_DRY_RUN=1 ./delete-factory.sh
+
+# Retire: move workspace to my-project.deleted-<timestamp>, remove agents from config
+FACTORY_PROJECT=my-project ./delete-factory.sh
+
+# If you already moved the tree (e.g. my-project.fail0):
+FACTORY_PROJECT=my-project FACTORY_DELETE_SUFFIX=.fail0 ./delete-factory.sh
+
+openclaw gateway restart
+# Remove aside dirs yourself when ready — the script never rm -rf's the project tree.
+```
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `FACTORY_PROJECT` | required | Project id / agent prefix |
+| `FACTORY_DELETE_SUFFIX` | `.deleted-<timestamp>` | Suffix for aside workspace + agent state dirs |
+| `FACTORY_DELETE_DRY_RUN` | `0` | `1` print actions only |
+| `FACTORY_WORKSPACE_SRC` | auto | Explicit path if the tree was already moved |
+| `FACTORY_DELETE_KEEP_AGENTS_STATE` | `1` | Move `~/.openclaw/agents/<id>` aside instead of letting delete trash it |
+| `FACTORY_DELETE_MOVE_WORKTREES` | `1` | Also aside `~/.openclaw/factory-worktrees/<project>` when present |
+| `FACTORY_DELETE_FORCE` | `0` | Required to delete `openclaw-factory-builder` itself |
+
+Details: [`docs/issues/FM-0102-delete-factory.md`](docs/issues/FM-0102-delete-factory.md).
+
+---
+
 ## Docs in this repo
 
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — inventory of what existed on first planning day
@@ -161,6 +196,7 @@ Product code still lives in **your product git repo** (often attached via `FACTO
 - [`docs/STATUS.md`](docs/STATUS.md) — short status snapshot
 - [`docs/issues/FM-0100-seed-hang-usability.md`](docs/issues/FM-0100-seed-hang-usability.md) — seed/TUI hang
 - [`docs/issues/FM-0101-rename-factory-to-foreman.md`](docs/issues/FM-0101-rename-factory-to-foreman.md) — coordinator rename
+- [`docs/issues/FM-0102-delete-factory.md`](docs/issues/FM-0102-delete-factory.md) — retire/delete factory (config scrub + move aside)
 
 ---
 
