@@ -41,20 +41,18 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 idx="$(
-  openclaw config get agents.list --json |
+  openclaw config get agents.entries --json |
     jq -r --arg id "$foreman_agent" '
-      to_entries[]
-      | select(.value.id == $id)
-      | .key
+      if has($id) then $id else empty end
     '
 )"
 
 echo "Project:        $FACTORY_PROJECT"
 echo "Foreman agent:  $foreman_agent"
-echo "Agent-list idx: $idx"
+echo "Foreman entry:  $idx"
 
-if [[ ! "$idx" =~ ^[0-9]+$ ]]; then
-  echo "Could not find $foreman_agent in agents.list" >&2
+if [[ "$idx" != "$foreman_agent" ]]; then
+  echo "Could not find $foreman_agent in agents.entries" >&2
   exit 1
 fi
 
@@ -71,7 +69,7 @@ echo "Allowed agents:"
 echo "$allow_agents" | jq .
 
 openclaw config set \
-  "agents.list[$idx].subagents.allowAgents" \
+  "agents.entries.$foreman_agent.subagents.allowAgents" \
   "$allow_agents" \
   --strict-json
 
@@ -80,7 +78,7 @@ openclaw config validate
 echo
 echo "Configured delegation:"
 openclaw config get \
-  "agents.list[$idx].subagents" \
+  "agents.entries.$foreman_agent.subagents" \
   --json
 
 echo
