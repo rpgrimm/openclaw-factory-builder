@@ -11,15 +11,19 @@
 #   FACTORY_OPEN_TUI=0|1                 open interactive TUI after seed (default: 1)
 #   FACTORY_RESEED_COORDINATOR=0|1       force re-send of init prompt (default: 0)
 #   FACTORY_GITHUB_REQUIRE_WRITE=0|1     require WRITE/MAINTAIN/ADMIN (default: 0)
-#   FACTORY_SEED_TIMEOUT=<seconds>       timeout for openclaw agent seed (default: 1800)
+#   FACTORY_SEED_TIMEOUT=<seconds>       seed timeout (default: 180)
+#   FACTORY_START_INTERVIEW=auto|0|1     start interview in TUI when pending (default: auto)
+#                                       use 1 to force a new interview
 #
 # Usability notes:
-# - Seeding runs `openclaw agent ...` and can take a long time while the model thinks.
-#   Progress is not always visible; that is not the same as "waiting for TUI".
-# - The TUI step is interactive and blocks until you exit the TUI. For non-interactive
-#   setup pipelines, set FACTORY_OPEN_TUI=0 (run-factory-setup.sh does this by default).
-# - Ctrl+C during seed may leave work partially done; the seed marker is written only
-#   after a successful seed. See docs/issues/FM-0100-seed-hang-usability.md.
+# - A lightweight model turn confirms readiness. It must NOT start discovery,
+#   call ask_user, or implement work during the headless seed.
+# - On first TUI launch, the interview begins inside the TUI via --message, so
+#   interactive ask_user prompts can actually be answered there.
+# - For non-interactive setup, FACTORY_OPEN_TUI=0 leaves interview pending until
+#   a later start-factory.sh invocation with FACTORY_OPEN_TUI=1.
+# - Ctrl+C during seed leaves the seed marker unwritten. Check agent session
+#   state before retrying an interrupted request (Gateway may finish it).
 #
 # Naming:
 #   The multi-agent system is the factory.
@@ -129,7 +133,25 @@ fi
 FACTORY_OPEN_TUI="${FACTORY_OPEN_TUI:-1}"
 FACTORY_RESEED_COORDINATOR="${FACTORY_RESEED_FOREMAN:-${FACTORY_RESEED_COORDINATOR:-0}}"
 FACTORY_GITHUB_REQUIRE_WRITE="${FACTORY_GITHUB_REQUIRE_WRITE:-0}"
-FACTORY_SEED_TIMEOUT="${FACTORY_SEED_TIMEOUT:-1800}"
+FACTORY_SEED_TIMEOUT="${FACTORY_SEED_TIMEOUT:-180}"
+FACTORY_START_INTERVIEW="${FACTORY_START_INTERVIEW:-auto}"
+
+case "$FACTORY_OPEN_TUI" in
+0 | 1) ;;
+*) echo "ERROR: FACTORY_OPEN_TUI must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$FACTORY_RESEED_COORDINATOR" in
+0 | 1) ;;
+*) echo "ERROR: FACTORY_RESEED_COORDINATOR must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$FACTORY_START_INTERVIEW" in
+auto | 0 | 1) ;;
+*) echo "ERROR: FACTORY_START_INTERVIEW must be auto, 0, or 1." >&2; exit 2 ;;
+esac
+if [[ ! "$FACTORY_SEED_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: FACTORY_SEED_TIMEOUT must be a positive number of seconds." >&2
+  exit 2
+fi
 
 github_token_file="$HOME/.config/openclaw/github_token"
 
@@ -137,6 +159,8 @@ foreman_agent="${FACTORY_PROJECT}-foreman"
 foreman_workspace="$HOME/.openclaw/workspaces/$FACTORY_PROJECT/foreman"
 seed_marker="$foreman_workspace/.foreman-seeded"
 legacy_seed_marker="$foreman_workspace/.factory-coordinator-seeded"
+kickoff_pending="$foreman_workspace/.foreman-interview-pending"
+kickoff_started="$foreman_workspace/.foreman-interview-started"
 
 #
 # Helpers
@@ -440,6 +464,24 @@ upsert_managed_block \
   "FACTORY GITHUB ACCESS" \
   "$github_tools_block"
 
+# Keep the ask_user schema constraints in the foreman's durable instructions,
+# not just in one chat turn. This does not overwrite user-authored content.
+agents_file="$foreman_workspace/AGENTS.md"
+upsert_managed_block \
+  "$agents_file" \
+  "FACTORY INTERVIEW RULES" \
+  "## Interactive discovery rules
+
+- Do not start an interview during a headless bootstrap/readiness check.
+- Ask project discovery questions only during an interactive session.
+- For \`ask_user\`, EVERY \`options[].label\` must contain no more than 64
+  characters; prefer 1-5 short words. Put detail in the option description.
+- If \`ask_user\` rejects a question, shorten labels and retry at most once;
+  otherwise ask a normal conversational question.
+- Complete discovery and get the owner's direction before implementation.
+- Never publish, push, deploy, or make externally visible changes without
+  the owner's explicit approval."
+
 #
 # Verify Gateway
 #
@@ -452,70 +494,48 @@ if ! openclaw gateway status >/dev/null 2>&1; then
 fi
 
 #
-# Build the initial foreman prompt
+# Two separate messages: a short headless readiness probe, and an interactive
+# kickoff delivered only AFTER the TUI connects. Do not run discovery in seed.
 #
-if [[ -n "$FACTORY_IDEA" ]]; then
-  initial_message="$(
-    cat <<EOF
-Begin as the foreman (main coordinator) for this factory.
+seed_message="$(cat <<EOF
+BOOTSTRAP READINESS CHECK for foreman $foreman_agent.
 
-The owner's starting idea is:
+This is a NONINTERACTIVE one-turn health check. Your normal role and workspace
+instructions are already provided by OpenClaw. Do NOT call any tools (including
+ask_user), interview the owner, inspect files, browse, delegate, write plans, or
+start implementation. Do not ask questions.
 
---- STARTING IDEA ---
-
-$FACTORY_IDEA
-
---- END STARTING IDEA ---
-
-This idea has also been saved in:
-
-$starting_idea_file
-
-Read that file along with your AGENTS.md, TOOLS.md, IDENTITY.md, and USER.md.
-
-Interview me about the current state of the project. Determine what already
-exists, what I actually want to build, important constraints, and what should
-happen first.
-
-Then create an initial product plan and prioritized backlog.
-
-Do not create code or publish anything yet.
+Reply with exactly the single word READY and nothing else.
 EOF
-  )"
-else
-  initial_message="$(
-    cat <<EOF
-Begin as the foreman (main coordinator) for this factory.
+)"
 
-Read your AGENTS.md, TOOLS.md, IDENTITY.md, and USER.md.
+kickoff_message="$(cat <<EOF
+Begin INTERACTIVE product discovery for factory $FACTORY_PROJECT.
 
-Interview me about the project's starting idea and current state. Determine
-what already exists, what I want to build, important constraints, and what
-should happen first.
+Read AGENTS.md, TOOLS.md, IDENTITY.md, USER.md and, if present,
+STARTING_IDEA.md. Treat the starting idea as a starting point, not a fixed spec.
+Interview me in this TUI to determine current project state, goals, constraints,
+what already exists and what should happen first. Ask focused questions, then
+prepare an initial product plan and prioritized backlog after discovery.
 
-Then create an initial product plan and prioritized backlog.
+IMPORTANT: For ask_user, each options[].label must be at most 64 characters;
+prefer short labels (1-5 words) and move explanations to description. If the
+question tool rejects a payload, repair the payload or ask in plain text.
 
-Do not create code or publish anything yet.
+Do not implement code or make externally visible changes without approval.
 EOF
-  )"
-fi
+)"
 
 if [[ -n "$factory_github_repo" ]]; then
-  initial_message+="
+  kickoff_message+="
 
-The configured GitHub repository is:
-
-$factory_github_repo
-
-You have verified access to it. You may inspect it to understand the current
-state of the project.
-
-Do not push, publish, create releases, modify repository settings, or perform
-other externally visible actions without my explicit approval."
+The configured repository is $factory_github_repo. GitHub access was checked
+by the startup script. You may inspect it read-only to learn its current state;
+do not push, publish, create releases or change settings without approval."
 else
-  initial_message+="
+  kickoff_message+="
 
-No GitHub repository has been configured yet. Do not guess one."
+No GitHub repository is configured. Do not guess a remote repository."
 fi
 
 #
@@ -536,33 +556,60 @@ fi
 
 echo "Open TUI after seed:  $FACTORY_OPEN_TUI"
 echo "Seed timeout (sec):   $FACTORY_SEED_TIMEOUT"
+echo "Start interview:      $FACTORY_START_INTERVIEW"
 echo
 
-if [[ ( ! -f "$seed_marker" && ! -f "${legacy_seed_marker:-}" ) ||
+if [[ ( ! -f "$seed_marker" && ! -f "$legacy_seed_marker" ) ||
   "$FACTORY_RESEED_COORDINATOR" == "1" ]]; then
-  echo "Seeding the factory foreman..."
-  echo "  (This runs the model once and can take several minutes.)"
-  echo "  (It is not waiting for the TUI. Ctrl+C aborts seeding.)"
-  echo "  (For setup pipelines without interaction: FACTORY_OPEN_TUI=0)"
+  echo "Checking foreman readiness (no interview or tools during seed)..."
+  echo "  (Interactive discovery starts in the TUI, not here.)"
   echo
 
-  # Run seed in a way that surfaces timeout clearly. Marker is written only on success.
-  if ! openclaw agent \
+  # CLI JSON separates model output from diagnostics so we can verify READY.
+  seed_json="$(mktemp)"
+  # IMPORTANT: do not use 'if ! command; then rc=$?' (that produces rc=0).
+  if openclaw agent \
     --agent "$foreman_agent" \
     --session-key main \
-    --message "$initial_message" \
-    --timeout "$FACTORY_SEED_TIMEOUT"; then
+    --message "$seed_message" \
+    --timeout "$FACTORY_SEED_TIMEOUT" \
+    --json >"$seed_json"; then
+    :
+  else
     rc=$?
+    rm -f "$seed_json"
     echo >&2
-    echo "ERROR: Foreman seeding failed or timed out (status $rc)." >&2
-    echo "Seed marker was NOT written. You can retry with:" >&2
-    echo "  FACTORY_PROJECT=$(printf '%q' "$FACTORY_PROJECT") \\" >&2
-    if [[ -n "$factory_github_repo" ]]; then
-      echo "  FACTORY_GITHUB=$(printf '%q' "$factory_github_repo") \\" >&2
-    fi
-    echo "  FACTORY_OPEN_TUI=0 ./start-factory.sh" >&2
+    echo "ERROR: Foreman readiness check failed (exit status $rc)." >&2
+    echo "No new seed marker was written. Inspect 'openclaw logs --follow'." >&2
     exit "$rc"
   fi
+
+  # OpenClaw CLI versions may return payloads at the top-level or under result.
+  # Don't mark seeded unless the model actually acknowledged readiness.
+  if ! jq -e . "$seed_json" >/dev/null 2>&1; then
+    echo "ERROR: Foreman seed did not produce valid JSON output." >&2
+    rm -f "$seed_json"
+    exit 1
+  fi
+  seed_reply="$(jq -r '
+    [ .result.payloads[]?.text,
+      .payloads[]?.text,
+      .result.final?,
+      .final? ]
+    | map(select(type == "string"))
+    | join("\n")
+  ' "$seed_json")"
+  if [[ "${seed_reply//[[:space:]]/}" != "READY" ]]; then
+    echo "ERROR: Foreman did not acknowledge readiness with READY." >&2
+    if [[ -n "$seed_reply" ]]; then
+      echo "Response (truncated): ${seed_reply:0:400}" >&2
+    else
+      echo "No text reply found in the CLI JSON payload." >&2
+    fi
+    rm -f "$seed_json"
+    exit 1
+  fi
+  rm -f "$seed_json"
 
   {
     printf 'project=%s\n' "$FACTORY_PROJECT"
@@ -571,12 +618,15 @@ if [[ ( ! -f "$seed_marker" && ! -f "${legacy_seed_marker:-}" ) ||
     printf 'github_repository=%s\n' "${factory_github_repo:-}"
     printf 'seeded_at=%s\n' "$(date --iso-8601=seconds)"
   } >"$seed_marker"
-  if [[ -n "${legacy_seed_marker:-}" && -f "$legacy_seed_marker" && "$legacy_seed_marker" != "$seed_marker" ]]; then
+  if [[ -f "$legacy_seed_marker" && "$legacy_seed_marker" != "$seed_marker" ]]; then
     rm -f "$legacy_seed_marker"
   fi
+  # Defer real discovery until a client capable of interactive questions exists.
+  printf 'pending_at=%s\n' "$(date --iso-8601=seconds)" >"$kickoff_pending"
+  rm -f "$kickoff_started"
 
   echo
-  echo "Foreman initialization completed."
+  echo "Foreman ready. Interactive interview queued for TUI."
   echo "Seed marker: $seed_marker"
 else
   echo "Foreman was already initialized:"
@@ -586,7 +636,7 @@ else
     echo "  $legacy_seed_marker"
   fi
   echo
-  echo "To send the initialization prompt again:"
+  echo "To repeat readiness check:"
   echo "  FACTORY_RESEED_COORDINATOR=1 FACTORY_PROJECT=$FACTORY_PROJECT ./start-factory.sh"
 fi
 
@@ -597,11 +647,15 @@ fi
 if [[ "$FACTORY_OPEN_TUI" == "0" ]]; then
   echo
   echo "TUI launch disabled (FACTORY_OPEN_TUI=0)."
+  if [[ -f "$kickoff_pending" ]]; then
+    echo "Interactive interview is pending and will start at the next TUI launch."
+  fi
   echo
-  echo "Open it manually with:"
-  echo "  cd $(printf '%q' "$foreman_workspace")"
-  echo "  openclaw tui --session \\"
-  echo "      $(printf '%q' "agent:${foreman_agent}:main")"
+  echo "To launch later with pending interview support:"
+  echo "  FACTORY_PROJECT=$(printf '%q' "$FACTORY_PROJECT") ./start-factory.sh"
+  echo
+  echo "Or to launch the TUI manually (without automatic interview):"
+  echo "  openclaw tui --session $(printf '%q' "agent:${foreman_agent}:main")"
   exit 0
 fi
 
@@ -613,6 +667,27 @@ echo "Tip: skip this step next time with FACTORY_OPEN_TUI=0"
 echo
 
 cd "$foreman_workspace"
+
+start_interview=0
+case "$FACTORY_START_INTERVIEW" in
+1) start_interview=1 ;;
+auto) [[ -f "$kickoff_pending" ]] && start_interview=1 ;;
+esac
+
+if [[ "$start_interview" == "1" ]]; then
+  echo "Starting the project interview *inside* the interactive TUI."
+  echo "  (ask_user prompts will now be visible and answerable.)"
+  echo
+
+  # Record launch once, not every time a factory session is reopened. If the
+  # TUI cannot connect, force the interview on retry with START_INTERVIEW=1.
+  if [[ -f "$kickoff_pending" ]]; then
+    mv "$kickoff_pending" "$kickoff_started"
+  fi
+  exec openclaw tui \
+    --session "agent:${foreman_agent}:main" \
+    --message "$kickoff_message"
+fi
 
 exec openclaw tui \
   --session "agent:${foreman_agent}:main"
