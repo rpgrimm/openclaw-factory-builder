@@ -2,11 +2,12 @@
 # run-factory-setup.sh — one-shot factory bootstrap pipeline.
 #
 # Runs, in order:
-#   1. make-factory.sh           create/reuse agents + workspaces
-#   2. set-identities.sh         display names / emoji
-#   3. set-factory-agent-md.sh   coordinator role block in AGENTS.md
-#   4. configure_delegation.sh   allow coordinator to spawn workers
-#   5. start-factory.sh          GitHub bind + one-time foreman seed
+#   1. audit-factory-host.sh     PATH, GitHub token, gateway token, gateway up
+#   2. make-factory.sh           create/reuse agents + workspaces
+#   3. set-identities.sh         display names / emoji
+#   4. set-factory-agent-md.sh   coordinator role block in AGENTS.md
+#   5. configure_delegation.sh   allow coordinator to spawn workers
+#   6. start-factory.sh          GitHub bind + one-time foreman seed
 #
 # Required:
 #   FACTORY_PROJECT=<project-id>
@@ -47,6 +48,7 @@ script_dir="$(
 )"
 
 scripts=(
+  "audit-factory-host.sh"
   "make-factory.sh"
   "set-identities.sh"
   "set-factory-agent-md.sh"

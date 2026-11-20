@@ -12,6 +12,13 @@
 #
 set -Eeuo pipefail
 
+script_dir="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+  pwd
+)"
+# shellcheck source=lib/host-env.sh
+source "$script_dir/lib/host-env.sh"
+
 workspace_root="${OPENCLAW_WORKSPACES:-$HOME/.openclaw/workspaces}"
 
 message="Pause all agent activity and GitHub checking for now. Do not delegate new work, inspect or modify GitHub, run implementation or verification tasks, publish anything, or perform scheduled/project activity until I explicitly tell you to resume. Preserve the current project state and wait."

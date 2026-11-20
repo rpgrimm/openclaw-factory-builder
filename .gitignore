@@ -1,5 +1,6 @@
 # Local / host noise
 .DS_Store
+factory-env.sh
 *.swp
 *~
 .env

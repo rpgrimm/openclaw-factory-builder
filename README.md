@@ -30,6 +30,9 @@ On a host with OpenClaw installed and the Gateway running:
 ```bash
 cd /path/to/openclaw-factory-builder
 
+# Fail fast if PATH, the GitHub token, or the gateway is not ready.
+./audit-factory-host.sh
+
 export FACTORY_PROJECT=my-project
 export FACTORY_GITHUB=owner/my-project          # optional but recommended
 export FACTORY_IDEA='One-paragraph product idea'  # optional on first run
@@ -89,8 +92,23 @@ into `GH_TOKEN`. They never print or commit the token. Prefer `chmod 600` on tha
 
 Canonical copies live under `scripts/`. Root `*.sh` files are thin wrappers so quick-start commands work from the repo root.
 
+Every script that calls OpenClaw sources `scripts/lib/host-env.sh` so non-interactive shells (tmux, `bash script.sh`) still find `node` and `openclaw` via nvm. Do not copy that PATH block into each script.
+
+`new-factory.sh` is the interactive entrypoint that used to live only in `~/bin/new-factory`. Point the bin command at this repo:
+
+```bash
+mkdir -p "$HOME/bin"
+ln -sfn "$(pwd)/new-factory.sh" "$HOME/bin/new-factory"
+new-factory my-project
+```
+
+It audits the host before opening tmux. Checkouts go in `~/code/dev` unless `FACTORY_BASE_DIR` is set.
+
 | Script | Purpose |
 |--------|---------|
+| `audit-factory-host.sh` | Check PATH, GitHub token, gateway token, and that the gateway is installed and running. `run-factory-setup.sh` and `new-factory.sh` run this first. |
+| `new-factory.sh` | Interactive launcher: audit, tmux, clone, idea prompt, then `run-factory-setup.sh`. Link it from `~/bin/new-factory`. |
+| `scripts/lib/host-env.sh` | Shared PATH/nvm setup sourced by the scripts. Not run directly. |
 | `run-factory-setup.sh` | Orchestrates full setup pipeline |
 | `make-factory.sh` | Create/reuse agents: foreman, spec, implement, verify, ship |
 | `set-identities.sh` | Names, themes, emoji |

@@ -9,13 +9,13 @@
 #   FACTORY_PROJECT=my-project ./set-identities.sh
 #
 set -euo pipefail
-export NVM_DIR="$HOME/.nvm"
 
-if [ -s "$NVM_DIR/nvm.sh" ]; then
-    . "$NVM_DIR/nvm.sh"
-fi
-
-nvm use default --silent
+script_dir="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+  pwd
+)"
+# shellcheck source=lib/host-env.sh
+source "$script_dir/lib/host-env.sh"
 
 if [[ -z "${FACTORY_PROJECT:-}" ]]; then
   echo "ERROR: FACTORY_PROJECT is not set." >&2

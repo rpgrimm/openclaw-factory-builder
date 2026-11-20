@@ -20,18 +20,13 @@
 #   FACTORY_PROJECT=my-project ./make-factory.sh
 #
 set -euo pipefail
-# Initialize NVM for non-interactive execution
-export NVM_DIR="$HOME/.nvm"
 
-if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-    source "$NVM_DIR/nvm.sh"
-fi
-
-nvm use 26 --silent
-echo "PATH=$PATH"
-echo "SHELL=$SHELL"
-command -v node || true
-command -v openclaw || true
+script_dir="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+  pwd
+)"
+# shellcheck source=lib/host-env.sh
+source "$script_dir/lib/host-env.sh"
 
 # Prefer an explicit project; fall back only for legacy convenience.
 FACTORY_PROJECT="${FACTORY_PROJECT:-west-boca-pc-build-lab}"

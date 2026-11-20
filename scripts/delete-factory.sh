@@ -42,6 +42,13 @@
 #
 set -Eeuo pipefail
 
+script_dir="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+  pwd
+)"
+# shellcheck source=lib/host-env.sh
+source "$script_dir/lib/host-env.sh"
+
 if [[ -z "${FACTORY_PROJECT:-}" ]]; then
   echo "ERROR: FACTORY_PROJECT is not set." >&2
   echo "Example:" >&2
