@@ -20,6 +20,18 @@
 #   FACTORY_PROJECT=my-project ./make-factory.sh
 #
 set -euo pipefail
+# Initialize NVM for non-interactive execution
+export NVM_DIR="$HOME/.nvm"
+
+if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    source "$NVM_DIR/nvm.sh"
+fi
+
+nvm use 26 --silent
+echo "PATH=$PATH"
+echo "SHELL=$SHELL"
+command -v node || true
+command -v openclaw || true
 
 # Prefer an explicit project; fall back only for legacy convenience.
 FACTORY_PROJECT="${FACTORY_PROJECT:-west-boca-pc-build-lab}"

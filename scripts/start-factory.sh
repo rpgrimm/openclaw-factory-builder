@@ -34,7 +34,13 @@
 #   Reads ~/.config/openclaw/github_token into GH_TOKEN. Never prints the token.
 #
 set -Eeuo pipefail
+export NVM_DIR="$HOME/.nvm"
 
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
+fi
+
+nvm use default --silent
 #
 # Required configuration
 #

@@ -20,6 +20,13 @@
 #
 set -euo pipefail
 
+export NVM_DIR="$HOME/.nvm"
+
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
+fi
+
+nvm use default --silent
 if [[ -z "${FACTORY_PROJECT:-}" ]]; then
   echo "ERROR: FACTORY_PROJECT is not set." >&2
   echo "Example: FACTORY_PROJECT=my-project ./configure_delegation.sh" >&2
