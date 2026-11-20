@@ -73,6 +73,7 @@
 | B-062 | Status command: list factories, coordinator id, seed marker | Nice-to-have | Not started |
 | B-063 | Gateway restart reminder automation? | Print-only vs prompt | Careful |
 | B-064 | `delete-factory.sh` — move workspace aside + scrub openclaw.json agents | FM-0102; do not rm tree | Done (PR) |
+| B-065 | `import-factory.sh` — adopt a factory from another host | FM-0103; workspaces only; no sessions, tokens, or openclaw.json merge | Done (local, not pushed) |
 
 ## P3 — Later
 
