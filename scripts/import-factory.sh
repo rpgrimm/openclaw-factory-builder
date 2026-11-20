@@ -11,30 +11,37 @@
 #     triage/                          (optional)
 #
 # Usage:
-#   # A copy already on this machine (scp, rsync, extracted tar):
+#   # From the staging VM. SSH is read-only rrsync rooted at ~/.openclaw.
+#   # Copies workspaces/<project> to a temp dir, imports, then deletes the temp dir.
+#   ./import-factory.sh my-project
+#   FACTORY_IMPORT_DRY_RUN=1 ./import-factory.sh my-project
+#
+#   # A copy already on this machine:
 #   FACTORY_PROJECT=my-project \
 #   FACTORY_IMPORT_SRC=/path/to/my-project \
 #   ./import-factory.sh
 #
-#   # Pull the workspace over SSH, then import:
+#   # Some other SSH host (normal home, not the staging rrsync jail):
 #   FACTORY_PROJECT=my-project \
 #   FACTORY_IMPORT_SSH=user@other-host \
 #   ./import-factory.sh
 #
-#   # Preview only:
-#   FACTORY_IMPORT_DRY_RUN=1 FACTORY_PROJECT=my-project \
-#     FACTORY_IMPORT_SRC=/path/to/my-project ./import-factory.sh
-#
 # Environment:
 #   FACTORY_PROJECT            Destination project id / agent prefix.
-#                              Defaults to the source directory name for a local src.
+#                              Defaults to the argument, or the source directory name.
 #   FACTORY_IMPORT_SRC         Local project workspace root. Not a single role dir.
-#   FACTORY_IMPORT_SSH         user@host. Pulls the remote workspace, then imports it.
+#                              When unset, a project name pulls from staging over SSH.
+#   FACTORY_IMPORT_SSH         Default for a project-only import: openclawvm-staging.
 #                              Do not set both SRC and SSH.
-#   FACTORY_IMPORT_REMOTE      Remote workspace path. Default:
+#   FACTORY_IMPORT_STAGING_HOST  Host used for that default. Default: openclawvm-staging.
+#   FACTORY_IMPORT_REMOTE      Remote path. Default on openclawvm-staging:
+#                              workspaces/$FACTORY_PROJECT
+#                              (relative to the rrsync root, ~/.openclaw).
+#                              Default on any other host:
 #                              ~/.openclaw/workspaces/$FACTORY_PROJECT
-#                              A custom value is a literal remote path (~ is not expanded).
+#                              A custom value is literal (~ is not expanded).
 #   FACTORY_IMPORT_DRY_RUN     1 = print the plan, write nothing, register nothing.
+#                              The staging download still uses a temp dir, then deletes it.
 #   FACTORY_IMPORT_FORCE       1 = required to import openclaw-factory-builder itself,
 #                              and to rsync into a destination that already has role dirs.
 #                              Never retargets an agent that already points somewhere else.
@@ -93,9 +100,31 @@ fi
 cleanup() {
   if [[ -n "$stage" && -d "$stage" ]]; then
     rm -rf "$stage"
+    echo "Removed temp: $stage"
   fi
 }
 trap cleanup EXIT
+
+staging_host="${FACTORY_IMPORT_STAGING_HOST:-openclawvm-staging}"
+
+if [[ $# -gt 1 ]]; then
+  echo "ERROR: too many arguments." >&2
+  echo "Usage: ./import-factory.sh [project-name]" >&2
+  exit 2
+fi
+if [[ $# -eq 1 ]]; then
+  if [[ -n "${FACTORY_PROJECT:-}" && "$FACTORY_PROJECT" != "$1" ]]; then
+    echo "ERROR: FACTORY_PROJECT ($FACTORY_PROJECT) and the argument ($1) disagree." >&2
+    exit 2
+  fi
+  FACTORY_PROJECT="$1"
+  export FACTORY_PROJECT
+fi
+
+# Project name alone pulls from the staging VM. A local SRC never does.
+if [[ -z "$src" && -z "$ssh_target" && -n "${FACTORY_PROJECT:-}" ]]; then
+  ssh_target="$staging_host"
+fi
 
 # role_dir_name:agent_suffix  (foreman is the coordinator)
 worker_roles=(spec implement verify ship triage)
@@ -116,6 +145,8 @@ copy_excludes=(
   --exclude 'openclaw-agent.sqlite'
   --exclude 'openclaw-agent.sqlite-shm'
   --exclude 'openclaw-agent.sqlite-wal'
+  --exclude '.venv/'
+  --exclude 'venv/'
 )
 
 note_skipped_secrets() {
@@ -159,6 +190,8 @@ refuse_escaping_symlinks() {
   local root_real link target
 
   root_real="$(readlink -f "$root")"
+  # Virtualenvs always symlink bin/python at the system interpreter.
+  # They are not copied (see copy_excludes); ignore any that slipped in.
   while IFS= read -r -d '' link; do
     target="$(readlink -f "$link" || true)"
     if [[ -z "$target" ]]; then
@@ -174,7 +207,7 @@ refuse_escaping_symlinks() {
         exit 1
         ;;
     esac
-  done < <(find "$root" -type l -print0)
+  done < <(find "$root" \( -name '.venv' -o -name 'venv' \) -prune -o -type l -print0)
 }
 
 looks_like_openclaw_home() {
@@ -326,8 +359,9 @@ if [[ -n "$ssh_target" && -n "$src" ]]; then
 fi
 
 if [[ -z "$ssh_target" && -z "$src" ]]; then
-  echo "ERROR: Set FACTORY_IMPORT_SRC or FACTORY_IMPORT_SSH." >&2
+  echo "ERROR: pass a project name, or set FACTORY_IMPORT_SRC." >&2
   echo "Example:" >&2
+  echo "  ./import-factory.sh my-project" >&2
   echo "  FACTORY_PROJECT=my-project FACTORY_IMPORT_SRC=/path/to/my-project ./import-factory.sh" >&2
   exit 2
 fi
@@ -353,6 +387,11 @@ print(shlex.quote(os.environ["FACTORY_IMPORT_REMOTE"]))
 PY
     )"
     remote_rsync="$ssh_target:$FACTORY_IMPORT_REMOTE"
+  elif [[ "$ssh_target" == "$staging_host" ]]; then
+    # rrsync on openclawvm-staging is rooted at ~/.openclaw, so the
+    # factory lives at workspaces/<project>, not ~/.openclaw/workspaces.
+    remote_shell="workspaces/$project_for_remote"
+    remote_rsync="$ssh_target:workspaces/$project_for_remote"
   else
     remote_shell="~/.openclaw/workspaces/$project_for_remote"
     remote_rsync="$ssh_target:~/.openclaw/workspaces/$project_for_remote"
@@ -364,6 +403,7 @@ PY
   if [[ "$dry_run" == "1" ]]; then
     echo "DRY RUN: downloading into a temp dir for inspection. Destination is not written."
   fi
+  echo "Temp dir is removed when this script exits."
   mkdir -p "$stage"
   rsync -a "${copy_excludes[@]}" "$remote_rsync/" "$stage/"
   src="$stage"
@@ -441,6 +481,7 @@ if [[ "$has_legacy" == "1" && "$map_legacy" == "1" ]]; then
   echo "  legacy:      factory/ -> foreman/"
 fi
 echo
+echo "SKIP: virtualenvs (.venv, venv) are not copied"
 
 refuse_escaping_symlinks "$src"
 note_skipped_secrets "$src"

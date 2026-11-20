@@ -23,11 +23,11 @@ Import copies role workspaces and registers agents on this host. It does **not**
 
 `scripts/import-factory.sh` (+ root wrapper `import-factory.sh`).
 
-1. Accept a local project workspace root (`FACTORY_IMPORT_SRC`) or pull one over SSH (`FACTORY_IMPORT_SSH`).
+1. Accept a project name, a local workspace root (`FACTORY_IMPORT_SRC`), or an explicit SSH host (`FACTORY_IMPORT_SSH`). A project name alone pulls from `openclawvm-staging`. That host is read-only rrsync rooted at `~/.openclaw`, so the remote path is `workspaces/<project>`, not `~/.openclaw/workspaces/<project>`. The download goes to a temp dir, the import reads that dir, and the temp dir is removed on exit.
 2. Require `foreman/` or legacy `factory/`. A single role directory is rejected. An OpenClaw home (`openclaw.json`, or `agents/` + `workspaces/`) is rejected.
 3. Map legacy `factory/` → `foreman/` by default.
 4. Refuse symlinks that point outside the source tree.
-5. Skip `github_token`, `openclaw.json`, key files, `*.pem`, `openclaw-agent.sqlite*`, and role-level `sessions/` and `agents/` directories.
+5. Skip `github_token`, `openclaw.json`, key files, `*.pem`, `openclaw-agent.sqlite*`, role-level `sessions/` and `agents/` directories, and virtualenvs (`.venv`, `venv`). A venv's `bin/python` symlink points at the system interpreter and must not fail the escaped-symlink check.
 6. Abort if the destination already has role dirs, unless `FACTORY_IMPORT_FORCE=1` (rsync, no `--delete`).
 7. Abort if an agent id already points at a different workspace. Import never retargets.
 8. Register missing role agents with `openclaw agents add`.

@@ -118,7 +118,7 @@ It audits the host before opening tmux. Checkouts go in `~/code/dev` unless `FAC
 | `pause-all-factories.sh` | Emergency stand-down message to every project foreman (legacy `*-factory` too) |
 | `migrate-coordinator-to-foreman.sh` | Rename an existing project's `*-factory` coordinator → `*-foreman` |
 | `delete-factory.sh` | Retire a factory: move workspace aside, remove agents from `openclaw.json`, leave dirs for manual `rm` |
-| `import-factory.sh` | Adopt an existing factory from another machine: copy role workspaces, register agents here. No chats, tokens, or `openclaw.json` merge. |
+| `import-factory.sh` | Adopt an existing factory. A project name pulls `workspaces/<project>` from `openclawvm-staging` into a temp dir, imports it, and deletes the temp dir. |
 
 Imported from the host pack `~/.openclaw/.factory-start-code/` (2026-09-04). Canonical copy is this GitHub repository going forward.
 
@@ -175,37 +175,30 @@ Product code still lives in **your product git repo** (often attached via `FACTO
 
 ## Import an existing factory
 
-Use this when the factory already exists on another machine. Copy that project's workspace root (`~/.openclaw/workspaces/<project>/`, the directory that contains `foreman/` or legacy `factory/`) to this host, or let the script pull it over SSH.
+Use this when the factory already exists on another machine. From this host, a project name is enough: the script pulls `openclawvm-staging:workspaces/<project>` (read-only rrsync rooted at `~/.openclaw`) into a temp dir, imports it, and deletes the temp dir.
 
-Workspaces only. Chats, agent sqlite, tokens, and the other host's `openclaw.json` stay behind. Agents are registered here with paths on this machine. An existing agent that already points somewhere else is not retargeted.
+Workspaces only. Chats, agent sqlite, tokens, virtualenvs (`.venv`, `venv`), and the other host's `openclaw.json` stay behind. Agents are registered here with paths on this machine. An existing agent that already points somewhere else is not retargeted.
 
 ```bash
-# Preview a local copy of the other machine's workspace root
-FACTORY_PROJECT=my-project \
-FACTORY_IMPORT_SRC=/path/to/my-project \
-FACTORY_IMPORT_DRY_RUN=1 \
-./import-factory.sh
-
-# Import it
-FACTORY_PROJECT=my-project \
-FACTORY_IMPORT_SRC=/path/to/my-project \
-./import-factory.sh
-
-# Or pull over SSH (remote default: ~/.openclaw/workspaces/$FACTORY_PROJECT)
-FACTORY_PROJECT=my-project \
-FACTORY_IMPORT_SSH=user@other-host \
-./import-factory.sh
+# Preview, then import from the staging VM. Nothing is copied by hand.
+FACTORY_IMPORT_DRY_RUN=1 ./import-factory.sh my-project
+./import-factory.sh my-project
 
 openclaw gateway restart
+
+# Or import a tree you already have locally:
+FACTORY_PROJECT=my-project \
+FACTORY_IMPORT_SRC=/path/to/my-project \
+./import-factory.sh
 ```
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `FACTORY_PROJECT` | source directory name | Destination project id / agent prefix. Required for SSH. |
-| `FACTORY_IMPORT_SRC` |  | Local project workspace root. Not a single role directory. |
-| `FACTORY_IMPORT_SSH` |  | `user@host`. Do not set both SRC and SSH. |
-| `FACTORY_IMPORT_REMOTE` | `~/.openclaw/workspaces/$FACTORY_PROJECT` | Remote path. A custom value is literal (`~` is not expanded). |
-| `FACTORY_IMPORT_DRY_RUN` | `0` | `1` print the plan only. SSH still downloads into a temp dir, then deletes it. |
+| `FACTORY_PROJECT` | argument, or source directory name | Destination project id / agent prefix. |
+| `FACTORY_IMPORT_SRC` |  | Local project workspace root. When set, SSH is not used. |
+| `FACTORY_IMPORT_SSH` | `openclawvm-staging` when only a project name is given | `user@host`. Do not set both SRC and SSH. |
+| `FACTORY_IMPORT_REMOTE` | `workspaces/$FACTORY_PROJECT` on staging; `~/.openclaw/workspaces/$FACTORY_PROJECT` on other hosts | Remote path. Staging's rrsync root is already `~/.openclaw`. A custom value is literal (`~` is not expanded). |
+| `FACTORY_IMPORT_DRY_RUN` | `0` | `1` print the plan only. The download still uses a temp dir, then deletes it. |
 | `FACTORY_IMPORT_FORCE` | `0` | `1` allow merging into an existing destination, and allow importing `openclaw-factory-builder` itself. Never retargets an agent. |
 | `FACTORY_IMPORT_MAP_LEGACY` | `1` | Copy legacy `factory/` to `foreman/` when `foreman/` is absent. |
 
